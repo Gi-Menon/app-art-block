@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "Art-Block",
+    "slug": "art-block",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "28c1687f-021b-4ef8-9a07-ab79bf34ea15"
+      }
+    },
+    "owner": "gim-menons-team",
+    "plugins": [
+      "expo-font"
+    ]
+  }
+}
