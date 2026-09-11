@@ -3,15 +3,18 @@ import { Ionicons } from '@expo/vector-icons';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Feed from '../feed';
-import Artes from '../feed/artes';
-import Animações from '../feed/animacao';
+import { Usuario } from '../../global/api';
 import { openDrawer } from './navigation';
 import HomeScreen from './screens/HomeScreen';
 
 const Tab = createBottomTabNavigator();
 
-function ArtsScreen() {
-  return <Feed/>;
+function ArtsFeed({ usuario }: { usuario: Usuario }) {
+  return <Feed category="Artes" usuario={usuario} />;
+}
+
+function AnimationFeed({ usuario }: { usuario: Usuario }) {
+  return <Feed category="Animações" usuario={usuario} />;
 }
 
 function getTabIcon(routeName: string, focused: boolean): keyof typeof Ionicons.glyphMap {
@@ -35,7 +38,7 @@ function EmptyScreen({ title }: { title: string }) {
   );
 }
 
-export default function Menus() {
+export default function Menus({ usuario }: { usuario: Usuario }) {
   return (
     <View style={styles.container}>
       <Pressable
@@ -68,11 +71,17 @@ export default function Menus() {
           },
         })}
       >
-        <Tab.Screen name="Principal" component={HomeScreen} />
-        <Tab.Screen name="Artes" component={Artes} />
-        <Tab.Screen name="Animações" component={Animações} />
+        <Tab.Screen name="Principal">
+          {() => <HomeScreen usuario={usuario} />}
+        </Tab.Screen>
+        <Tab.Screen name="Artes">
+          {() => <ArtsFeed usuario={usuario} />}
+        </Tab.Screen>
+        <Tab.Screen name="Animações">
+          {() => <AnimationFeed usuario={usuario} />}
+        </Tab.Screen>
         <Tab.Screen name="Wips">
-          {() => <EmptyScreen title="Wips" />}
+          {() => <Feed category="Wips" usuario={usuario} />}
         </Tab.Screen>
       </Tab.Navigator>
     </View>

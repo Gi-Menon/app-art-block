@@ -21,6 +21,16 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Permita que o Art-Block acesse suas fotos para publica-las.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ]
+    ],
     "extra": {
       "eas": {
         "projectId": "28c1687f-021b-4ef8-9a07-ab79bf34ea15"

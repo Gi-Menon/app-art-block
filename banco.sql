@@ -30,6 +30,7 @@ CREATE TABLE posts (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     usuario_id BIGINT NOT NULL,
     texto TEXT NOT NULL,
+    categoria ENUM('arte', 'animacao', 'wip') NOT NULL DEFAULT 'arte',
     criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     atualizado_em DATETIME ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
@@ -127,10 +128,11 @@ INSERT INTO seguidores (seguidor_id, seguido_id) VALUES
 (1, 2), 
 (3, 1);
 
-INSERT INTO posts (id, usuario_id, texto) VALUES
-(1, 2, 'Acabei de finalizar meu novo desenho digital! O que acharam?'),
-(2, 1, 'Procurando alguém pra jogar coop hoje à noite, chama aí!'),
-(3, 3, 'Trabalho de banco de dados finalmente entregue! 🚀');
+INSERT INTO posts (id, usuario_id, texto, categoria) VALUES
+(1, 2, 'Acabei de finalizar meu novo desenho digital! O que acharam?', 'arte'),
+(2, 1, 'Procurando alguém pra jogar coop hoje à noite, chama aí!', 'animacao'),
+(3, 3, 'Trabalho de banco de dados finalmente entregue! 🚀', 'arte'),
+(4, 1, 'Preguiça de terminar o trabalho', 'arte');
 
 INSERT INTO curtidas (usuario_id, post_id) VALUES
 (1, 1), 
@@ -140,3 +142,5 @@ INSERT INTO curtidas (usuario_id, post_id) VALUES
 INSERT INTO comentarios (id, post_id, usuario_id, comentario_pai_id, comentario) VALUES
 (1, 1, 1, NULL, 'Ficou MANEIRO! Gostei demais das cores.'),
 (2, 1, 2, 1, 'Valeu Lino! Deu um trabalhão pra acertar a paleta.');
+
+   
