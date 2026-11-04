@@ -1,10 +1,24 @@
+import Constants from 'expo-constants';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
 
-export const API_URL =
-  Platform.OS === 'android'
-    ? 'http://192.168.15.5:3000'
+function obterUrlDaApi(): string {
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    return process.env.EXPO_PUBLIC_API_URL.replace(/\/$/, '');
+  }
+
+  const hostUri = Constants.expoConfig?.hostUri;
+  if (hostUri) {
+    const host = hostUri.split(':')[0];
+    return `http://${host}:3000`;
+  }
+
+  return Platform.OS === 'android'
+    ? 'http://10.0.2.2:3000'
     : 'http://localhost:3000';
+}
+
+export const API_URL = obterUrlDaApi();
 
 export type Usuario = {
   id: number;
@@ -77,6 +91,18 @@ async function lerErro(response: Response) {
     return resposta?.error || texto;
   } catch {
     return texto;
+  }
+}
+
+export async function salvarPushToken(usuarioId: number, token: string): Promise<void> {
+  const response = await fetch(`${API_URL}/usuarios/${usuarioId}/push-token`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await lerErro(response));
   }
 }
 

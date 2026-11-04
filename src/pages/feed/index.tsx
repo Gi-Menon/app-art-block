@@ -341,6 +341,7 @@ export default function Feed({
                 key={arquivo.id}
                 source={{ uri: arquivo.url }}
                 style={style.postImage}
+                resizeMode="cover"
               />
             ))}
 

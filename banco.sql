@@ -5,7 +5,8 @@ CREATE TABLE usuarios (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     arroba VARCHAR(30) NOT NULL UNIQUE,
     email VARCHAR(255) NOT NULL UNIQUE,
-    senha VARCHAR(255) NOT NULL
+    senha VARCHAR(255) NOT NULL,
+    expo_push_token TEXT NULL
 );
 
 
@@ -74,6 +75,7 @@ CREATE TABLE notificacoes (
     post_id BIGINT,
     comentario_id BIGINT,
     enviado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    lida BOOLEAN NOT NULL DEFAULT FALSE,
     FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
     FOREIGN KEY (usuario_origem_id) REFERENCES usuarios(id) ON DELETE SET NULL,
     FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
@@ -133,6 +135,12 @@ INSERT INTO posts (id, usuario_id, texto, categoria) VALUES
 (2, 1, 'Procurando alguém pra jogar coop hoje à noite, chama aí!', 'animacao'),
 (3, 3, 'Trabalho de banco de dados finalmente entregue! 🚀', 'arte'),
 (4, 1, 'Preguiça de terminar o trabalho', 'arte');
+
+INSERT INTO arquivos_post (post_id, tipo, url, ordem) VALUES
+(1, 'imagem', 'miku.png', 0),
+(2, 'imagem', 'tetoris-kasane-teto.gif', 0),
+(3, 'imagem', 'banco.png', 0),
+(4, 'imagem', 'preguica.png', 0);
 
 INSERT INTO curtidas (usuario_id, post_id) VALUES
 (1, 1), 

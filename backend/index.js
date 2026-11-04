@@ -38,6 +38,37 @@ app.use((request, _response, next) => {
 app.use('/uploads', express.static(uploadDirectory));
 app.use('/feed-images', express.static(feedImageDirectory));
 
+async function garantirColunasNotificacoes() {
+  const [usuarios] = await pool.query("SHOW COLUMNS FROM usuarios LIKE 'expo_push_token'");
+  if (usuarios.length === 0) {
+    await pool.execute('ALTER TABLE usuarios ADD COLUMN expo_push_token TEXT NULL');
+  }
+
+  const [notificacoes] = await pool.query("SHOW COLUMNS FROM notificacoes LIKE 'lida'");
+  if (notificacoes.length === 0) {
+    await pool.execute('ALTER TABLE notificacoes ADD COLUMN lida BOOLEAN NOT NULL DEFAULT FALSE');
+  }
+
+  const desenhosExemplo = [
+    [1, 'miku.png'],
+    [2, 'tetoris-kasane-teto.gif'],
+    [3, 'banco.png'],
+    [4, 'preguica.png'],
+  ];
+
+  for (const [postId, url] of desenhosExemplo) {
+    await pool.execute(
+      `INSERT INTO arquivos_post (post_id, tipo, url, ordem)
+       SELECT ?, 'imagem', ?, 0
+       WHERE EXISTS (SELECT 1 FROM posts WHERE id = ?)
+         AND NOT EXISTS (
+           SELECT 1 FROM arquivos_post WHERE post_id = ? AND tipo = 'imagem'
+         )`,
+      [postId, url, postId, postId],
+    );
+  }
+}
+
 function getPublicFileUrl(request, fileUrl) {
   if (/^https?:\/\//i.test(fileUrl)) {
     return fileUrl;
@@ -46,6 +77,24 @@ function getPublicFileUrl(request, fileUrl) {
   const fileName = path.basename(fileUrl);
   const route = fileUrl.includes('/videos/') ? 'feed-videos' : 'feed-images';
   return `${request.protocol}://${request.get('host')}/${route}/${encodeURIComponent(fileName)}`;
+}
+
+async function enviarPushExpo(usuarioId, notification) {
+  const [usuarios] = await pool.execute(
+    'SELECT expo_push_token FROM usuarios WHERE id = ?',
+    [usuarioId],
+  );
+  const token = usuarios[0]?.expo_push_token;
+
+  if (!token || !token.startsWith('ExponentPushToken[')) {
+    return;
+  }
+
+  await fetch('https://exp.host/--/api/v2/push/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ to: token, ...notification }),
+  });
 }
 
 app.get('/health', async (_request, response) => {
@@ -153,6 +202,23 @@ app.get(['/usuarios/:id/perfil', '/usuarios/:id/perfil/'], async (request, respo
   } catch (error) {
     console.error(error);
     return response.status(500).json({ error: 'Nao foi possivel carregar o perfil.' });
+  }
+});
+
+app.put('/usuarios/:id/push-token', async (request, response) => {
+  const { id } = request.params;
+  const { token } = request.body;
+
+  if (!token || !String(token).startsWith('ExponentPushToken[')) {
+    return response.status(400).json({ error: 'Token de notificacao invalido.' });
+  }
+
+  try {
+    await pool.execute('UPDATE usuarios SET expo_push_token = ? WHERE id = ?', [token, id]);
+    return response.json({ ok: true });
+  } catch (error) {
+    console.error(error);
+    return response.status(500).json({ error: 'Nao foi possivel registrar o token.' });
   }
 });
 
@@ -498,6 +564,27 @@ app.post('/posts/:id/comentarios', async (request, response) => {
       [id, usuario_id, comentario_pai_id, comentarioTexto],
     );
 
+    const [destinos] = await pool.execute(
+      `SELECT p.usuario_id AS dono_post, u.arroba AS origem
+       FROM posts p JOIN usuarios u ON u.id = ? WHERE p.id = ?`,
+      [usuario_id, id],
+    );
+    const donoPost = destinos[0]?.dono_post;
+    const origem = destinos[0]?.origem || 'Alguem';
+
+    if (donoPost && Number(donoPost) !== Number(usuario_id)) {
+      await pool.execute(
+        `INSERT INTO notificacoes (usuario_id, tipo, usuario_origem_id, post_id, comentario_id)
+         VALUES (?, 'comentario', ?, ?, ?)`,
+        [donoPost, usuario_id, id, resultado.insertId],
+      );
+      await enviarPushExpo(donoPost, {
+        title: 'Novo comentario',
+        body: `${origem} comentou na sua arte: ${comentarioTexto}`,
+        data: { postId: Number(id), type: 'comentario' },
+      }).catch((error) => console.error('Erro ao enviar push:', error));
+    }
+
     const [comentarioCriado] = await pool.execute(
       `SELECT c.id, c.post_id, c.usuario_id, c.comentario_pai_id, c.comentario, c.criado_em,
               u.arroba, pf.nome
@@ -555,7 +642,11 @@ app.post('/posts/:id/curtir', async (request, response) => {
   }
 
   try {
-    const [posts] = await pool.execute('SELECT id FROM posts WHERE id = ?', [id]);
+    const [posts] = await pool.execute(
+      `SELECT p.id, p.usuario_id AS dono_post, u.arroba AS origem
+       FROM posts p JOIN usuarios u ON u.id = ? WHERE p.id = ?`,
+      [usuario_id, id],
+    );
     if (posts.length === 0) {
       return response.status(404).json({ error: 'Post nao encontrado.' });
     }
@@ -580,6 +671,21 @@ app.post('/posts/:id/curtir', async (request, response) => {
         'INSERT INTO curtidas (usuario_id, post_id) VALUES (?, ?)',
         [usuario_id, id],
       );
+
+      const donoPost = posts[0]?.dono_post;
+      const origem = posts[0]?.origem || 'Alguem';
+      if (donoPost && Number(donoPost) !== Number(usuario_id)) {
+        await pool.execute(
+          `INSERT INTO notificacoes (usuario_id, tipo, usuario_origem_id, post_id)
+           VALUES (?, 'curtida', ?, ?)`,
+          [donoPost, usuario_id, id],
+        );
+        await enviarPushExpo(donoPost, {
+          title: 'Nova curtida',
+          body: `${origem} curtiu sua arte`,
+          data: { postId: Number(id), type: 'curtida' },
+        }).catch((error) => console.error('Erro ao enviar push:', error));
+      }
     }
 
     const [resultado] = await pool.execute(
@@ -597,6 +703,11 @@ app.post('/posts/:id/curtir', async (request, response) => {
   }
 });
 
-app.listen(port, () => {
+app.listen(port, '0.0.0.0', async () => {
+  try {
+    await garantirColunasNotificacoes();
+  } catch (error) {
+    console.error('Erro ao preparar tabelas de notificacoes:', error);
+  }
   console.log(`API Art-Block executando em http://localhost:${port}`);
 });

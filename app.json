@@ -10,6 +10,7 @@
       "supportsTablet": true
     },
     "android": {
+      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -22,6 +23,7 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "expo-font",
       [
         "expo-image-picker",
         {
@@ -29,16 +31,20 @@
           "cameraPermission": false,
           "microphonePermission": false
         }
-      ]
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#2F80ED"
+        }
+      ],
+      "expo-status-bar"
     ],
     "extra": {
       "eas": {
         "projectId": "28c1687f-021b-4ef8-9a07-ab79bf34ea15"
       }
     },
-    "owner": "gim-menons-team",
-    "plugins": [
-      "expo-font"
-    ]
+    "owner": "gim-menons-team"
   }
 }
