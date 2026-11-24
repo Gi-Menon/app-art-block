@@ -1,11 +1,12 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Feed from '../feed';
-import { Usuario } from '../../global/api';
+import { listarNotificacoes, Usuario } from '../../global/api';
 import { openDrawer } from './navigation';
 import HomeScreen from './screens/HomeScreen';
+import NotificationsScreen from './screens/NotificationsScreen';
 
 const Tab = createBottomTabNavigator();
 
@@ -25,6 +26,8 @@ function getTabIcon(routeName: string, focused: boolean): keyof typeof Ionicons.
       return focused ? 'color-palette' : 'color-palette-outline';
     case 'Animações':
       return focused ? 'film' : 'film-outline';
+    case 'Notificacoes':
+      return focused ? 'notifications' : 'notifications-outline';
     default:
       return focused ? 'construct' : 'construct-outline';
   }
@@ -39,6 +42,27 @@ function EmptyScreen({ title }: { title: string }) {
 }
 
 export default function Menus({ usuario }: { usuario: Usuario }) {
+  const [naoLidas, setNaoLidas] = useState(0);
+
+  useEffect(() => {
+    let ativo = true;
+    const atualizarContagem = async () => {
+      try {
+        const resultado = await listarNotificacoes(usuario.id);
+        if (ativo) setNaoLidas(resultado.naoLidas);
+      } catch (error) {
+        console.warn('Nao foi possivel atualizar a contagem de notificacoes:', error);
+      }
+    };
+
+    atualizarContagem();
+    const intervalo = setInterval(atualizarContagem, 30000);
+    return () => {
+      ativo = false;
+      clearInterval(intervalo);
+    };
+  }, [usuario.id]);
+
   return (
     <View style={styles.container}>
       <Pressable
@@ -82,6 +106,17 @@ export default function Menus({ usuario }: { usuario: Usuario }) {
         </Tab.Screen>
         <Tab.Screen name="Wips">
           {() => <Feed category="Wips" usuario={usuario} />}
+        </Tab.Screen>
+        <Tab.Screen
+          name="Notificacoes"
+          options={{
+            title: 'Notificações',
+            tabBarBadge: naoLidas > 0 ? (naoLidas > 99 ? '99+' : naoLidas) : undefined,
+          }}
+        >
+          {() => (
+            <NotificationsScreen usuario={usuario} onUnreadCountChange={setNaoLidas} />
+          )}
         </Tab.Screen>
       </Tab.Navigator>
     </View>

@@ -67,6 +67,15 @@ CREATE TABLE comentarios (
     FOREIGN KEY (comentario_pai_id) REFERENCES comentarios(id) ON DELETE CASCADE
 );
 
+CREATE TABLE curtidas_comentarios (
+    usuario_id BIGINT NOT NULL,
+    comentario_id BIGINT NOT NULL,
+    curtido_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (usuario_id, comentario_id),
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
+    FOREIGN KEY (comentario_id) REFERENCES comentarios(id) ON DELETE CASCADE
+);
+
 CREATE TABLE notificacoes (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     usuario_id BIGINT NOT NULL,
@@ -111,6 +120,7 @@ CREATE INDEX idx_seguidores_seguidor ON seguidores(seguidor_id);
 CREATE INDEX idx_seguidores_seguido ON seguidores(seguido_id);
 CREATE INDEX idx_curtidas_post ON curtidas(post_id);
 CREATE INDEX idx_comentarios_post ON comentarios(post_id);
+CREATE INDEX idx_curtidas_comentario ON curtidas_comentarios(comentario_id);
 CREATE INDEX idx_notificacoes_usuario ON notificacoes(usuario_id);
 CREATE INDEX idx_mensagens_conversa ON mensagens(conversa_id, enviada_em);
 

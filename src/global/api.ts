@@ -44,6 +44,22 @@ export type Comentario = {
   criado_em: string;
   arroba: string;
   nome: string | null;
+  curtidas: number;
+  curtido_por_mim: boolean;
+};
+
+export type Notificacao = {
+  id: number;
+  tipo: 'curtida' | 'curtida_comentario' | 'comentario';
+  usuario_origem_id: number | null;
+  post_id: number | null;
+  comentario_id: number | null;
+  enviado_em: string;
+  lida: boolean;
+  origem_arroba: string | null;
+  origem_nome: string | null;
+  post_texto: string | null;
+  comentario_texto: string | null;
 };
 
 export type Post = {
@@ -169,8 +185,9 @@ export async function listarPosts(categoria?: 'arte' | 'animacao' | 'wip', usuar
   }));
 }
 
-export async function listarComentarios(postId: number): Promise<Comentario[]> {
-  const response = await fetch(`${API_URL}/posts/${postId}/comentarios`);
+export async function listarComentarios(postId: number, usuarioId?: number): Promise<Comentario[]> {
+  const query = usuarioId ? `?usuario_id=${usuarioId}` : '';
+  const response = await fetch(`${API_URL}/posts/${postId}/comentarios${query}`);
 
   if (!response.ok) {
     throw new Error('Nao foi possivel carregar os comentarios.');
@@ -216,6 +233,57 @@ export async function alternarCurtida(postId: number, usuarioId: number): Promis
   }
 
   return response.json();
+}
+
+export async function alternarCurtidaComentario(
+  comentarioId: number,
+  usuarioId: number,
+): Promise<{ curtidas: number; curtido: boolean }> {
+  const response = await fetch(`${API_URL}/comentarios/${comentarioId}/curtir`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ usuario_id: usuarioId }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await lerErro(response));
+  }
+
+  return response.json();
+}
+
+export async function listarNotificacoes(
+  usuarioId: number,
+): Promise<{ notificacoes: Notificacao[]; naoLidas: number }> {
+  const response = await fetch(`${API_URL}/usuarios/${usuarioId}/notificacoes`);
+  if (!response.ok) {
+    throw new Error(await lerErro(response));
+  }
+
+  const data: { notificacoes: Notificacao[]; nao_lidas: number } = await response.json();
+  return { notificacoes: data.notificacoes, naoLidas: Number(data.nao_lidas || 0) };
+}
+
+export async function marcarNotificacaoComoLida(notificacaoId: number, usuarioId: number): Promise<void> {
+  const response = await fetch(`${API_URL}/notificacoes/${notificacaoId}/lida`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ usuario_id: usuarioId }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await lerErro(response));
+  }
+}
+
+export async function marcarTodasNotificacoesComoLidas(usuarioId: number): Promise<void> {
+  const response = await fetch(`${API_URL}/usuarios/${usuarioId}/notificacoes/lidas`, {
+    method: 'PUT',
+  });
+
+  if (!response.ok) {
+    throw new Error(await lerErro(response));
+  }
 }
 
 export async function deletarPost(postId: number, usuarioId: number): Promise<void> {

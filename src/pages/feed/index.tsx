@@ -5,6 +5,7 @@ import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, Text, Te
 import {style} from "./style";
 import {
   alternarCurtida,
+  alternarCurtidaComentario,
   criarComentario,
   criarPost,
   deletarComentario,
@@ -60,13 +61,17 @@ export default function Feed({
   }, [categoriaFiltro, usuario?.id]);
 
   useEffect(() => {
+    setComentariosPorPost({});
+  }, [usuario?.id]);
+
+  useEffect(() => {
     posts.forEach(async (post) => {
       if (comentariosPorPost[post.id]) {
         return;
       }
 
       try {
-        const comentarios = await listarComentarios(post.id);
+        const comentarios = await listarComentarios(post.id, usuario?.id);
         setComentariosPorPost((anterior) => ({
           ...anterior,
           [post.id]: comentarios,
@@ -75,7 +80,7 @@ export default function Feed({
         // ignora erro de comentários para não quebrar a listagem dos posts
       }
     });
-  }, [posts]);
+  }, [posts, usuario?.id]);
 
   const escolherImagem = async () => {
     const permissao = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -246,6 +251,31 @@ export default function Feed({
     }
   };
 
+  const handleCurtirComentario = async (postId: number, comentarioId: number) => {
+    if (!usuario) {
+      Alert.alert('Login necessario', 'Faca login para curtir um comentario.');
+      return;
+    }
+
+    try {
+      const resultado = await alternarCurtidaComentario(comentarioId, usuario.id);
+      setComentariosPorPost((anterior) => ({
+        ...anterior,
+        [postId]: (anterior[postId] || []).map((comentario) =>
+          comentario.id === comentarioId
+            ? {
+                ...comentario,
+                curtidas: resultado.curtidas,
+                curtido_por_mim: resultado.curtido,
+              }
+            : comentario,
+        ),
+      }));
+    } catch (error) {
+      Alert.alert('Erro', error instanceof Error ? error.message : 'Nao foi possivel curtir este comentario.');
+    }
+  };
+
   const handleExcluirPost = async (postId: number) => {
     if (!usuario) {
       Alert.alert('Login necessario', 'Faca login para excluir um post.');
@@ -372,6 +402,15 @@ export default function Feed({
                     )}
                   </View>
                   <Text style={style.commentText}>{comentario.comentario}</Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => handleCurtirComentario(post.id, comentario.id)}
+                    style={{ alignSelf: 'flex-start', marginTop: 6 }}
+                  >
+                    <Text style={{ color: comentario.curtido_por_mim ? '#1d4ed8' : '#718096', fontWeight: '600' }}>
+                      {comentario.curtido_por_mim ? 'Curtido' : 'Curtir'} · {comentario.curtidas}
+                    </Text>
+                  </Pressable>
                 </View>
               ))}
             </View>

@@ -49,6 +49,17 @@ async function garantirColunasNotificacoes() {
     await pool.execute('ALTER TABLE notificacoes ADD COLUMN lida BOOLEAN NOT NULL DEFAULT FALSE');
   }
 
+  await pool.execute(
+    `CREATE TABLE IF NOT EXISTS curtidas_comentarios (
+       usuario_id BIGINT NOT NULL,
+       comentario_id BIGINT NOT NULL,
+       curtido_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       PRIMARY KEY (usuario_id, comentario_id),
+       FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
+       FOREIGN KEY (comentario_id) REFERENCES comentarios(id) ON DELETE CASCADE
+     )`,
+  );
+
   const desenhosExemplo = [
     [1, 'miku.png'],
     [2, 'tetoris-kasane-teto.gif'],
@@ -90,11 +101,20 @@ async function enviarPushExpo(usuarioId, notification) {
     return;
   }
 
-  await fetch('https://exp.host/--/api/v2/push/send', {
+  const response = await fetch('https://exp.host/--/api/v2/push/send', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify({ to: token, ...notification }),
   });
+
+  if (!response.ok) {
+    throw new Error(`Expo Push respondeu com HTTP ${response.status}.`);
+  }
+
+  const resultado = await response.json();
+  if (resultado.data?.status === 'error') {
+    throw new Error(resultado.data.message || 'Expo Push nao aceitou a notificacao.');
+  }
 }
 
 app.get('/health', async (_request, response) => {
@@ -219,6 +239,74 @@ app.put('/usuarios/:id/push-token', async (request, response) => {
   } catch (error) {
     console.error(error);
     return response.status(500).json({ error: 'Nao foi possivel registrar o token.' });
+  }
+});
+
+app.get('/usuarios/:id/notificacoes', async (request, response) => {
+  const { id } = request.params;
+
+  try {
+    const [notificacoes] = await pool.execute(
+      `SELECT n.id, n.tipo, n.usuario_origem_id, n.post_id, n.comentario_id,
+              n.enviado_em, n.lida, u.arroba AS origem_arroba, pf.nome AS origem_nome,
+              p.texto AS post_texto, c.comentario AS comentario_texto
+       FROM notificacoes n
+       LEFT JOIN usuarios u ON u.id = n.usuario_origem_id
+       LEFT JOIN perfis pf ON pf.usuario_id = u.id
+       LEFT JOIN posts p ON p.id = n.post_id
+       LEFT JOIN comentarios c ON c.id = n.comentario_id
+       WHERE n.usuario_id = ?
+       ORDER BY n.enviado_em DESC, n.id DESC
+       LIMIT 100`,
+      [id],
+    );
+    const [naoLidas] = await pool.execute(
+      'SELECT COUNT(*) AS total FROM notificacoes WHERE usuario_id = ? AND lida = FALSE',
+      [id],
+    );
+
+    return response.json({
+      notificacoes: notificacoes.map((notificacao) => ({
+        ...notificacao,
+        lida: Boolean(notificacao.lida),
+      })),
+      nao_lidas: Number(naoLidas[0].total || 0),
+    });
+  } catch (error) {
+    console.error(error);
+    return response.status(500).json({ error: 'Nao foi possivel carregar as notificacoes.' });
+  }
+});
+
+app.put('/notificacoes/:id/lida', async (request, response) => {
+  const { id } = request.params;
+  const { usuario_id } = request.body;
+
+  if (!usuario_id) {
+    return response.status(400).json({ error: 'usuario_id e obrigatorio.' });
+  }
+
+  try {
+    await pool.execute(
+      'UPDATE notificacoes SET lida = TRUE WHERE id = ? AND usuario_id = ?',
+      [id, usuario_id],
+    );
+    return response.json({ ok: true });
+  } catch (error) {
+    console.error(error);
+    return response.status(500).json({ error: 'Nao foi possivel atualizar a notificacao.' });
+  }
+});
+
+app.put('/usuarios/:id/notificacoes/lidas', async (request, response) => {
+  const { id } = request.params;
+
+  try {
+    await pool.execute('UPDATE notificacoes SET lida = TRUE WHERE usuario_id = ?', [id]);
+    return response.json({ ok: true });
+  } catch (error) {
+    console.error(error);
+    return response.status(500).json({ error: 'Nao foi possivel atualizar as notificacoes.' });
   }
 });
 
@@ -518,23 +606,114 @@ app.get('/posts', async (request, response) => {
 
 app.get('/posts/:id/comentarios', async (request, response) => {
   const { id } = request.params;
+  const usuarioId = request.query.usuario_id ? Number(request.query.usuario_id) : null;
 
   try {
     const [comentarios] = await pool.execute(
       `SELECT c.id, c.post_id, c.usuario_id, c.comentario_pai_id, c.comentario, c.criado_em,
-              u.arroba, pf.nome
+              u.arroba, pf.nome,
+              (SELECT COUNT(*) FROM curtidas_comentarios cc WHERE cc.comentario_id = c.id) AS curtidas,
+              (CASE
+                WHEN ? IS NOT NULL AND EXISTS (
+                  SELECT 1 FROM curtidas_comentarios cc
+                  WHERE cc.comentario_id = c.id AND cc.usuario_id = ?
+                ) THEN 1
+                ELSE 0
+              END) AS curtido_por_mim
        FROM comentarios c
        JOIN usuarios u ON u.id = c.usuario_id
        LEFT JOIN perfis pf ON pf.usuario_id = u.id
        WHERE c.post_id = ?
        ORDER BY c.criado_em ASC, c.id ASC`,
-      [id],
+      [usuarioId, usuarioId, id],
     );
 
-    return response.json({ comentarios });
+    return response.json({
+      comentarios: comentarios.map((comentario) => ({
+        ...comentario,
+        curtidas: Number(comentario.curtidas || 0),
+        curtido_por_mim: Boolean(comentario.curtido_por_mim),
+      })),
+    });
   } catch (error) {
     console.error(error);
     return response.status(500).json({ error: 'Nao foi possivel carregar os comentarios.' });
+  }
+});
+
+app.post('/comentarios/:id/curtir', async (request, response) => {
+  const { id } = request.params;
+  const { usuario_id } = request.body;
+
+  if (!usuario_id) {
+    return response.status(400).json({ error: 'usuario_id e obrigatorio.' });
+  }
+
+  try {
+    const [usuarios] = await pool.execute(
+      'SELECT id FROM usuarios WHERE id = ?',
+      [usuario_id],
+    );
+    if (usuarios.length === 0) {
+      return response.status(401).json({ error: 'Usuario nao autenticado.' });
+    }
+
+    const [comentarios] = await pool.execute(
+      `SELECT c.id, c.post_id, c.usuario_id AS dono_comentario, origem.arroba AS origem
+       FROM comentarios c
+       JOIN usuarios origem ON origem.id = ?
+       WHERE c.id = ?`,
+      [usuario_id, id],
+    );
+    if (comentarios.length === 0) {
+      return response.status(404).json({ error: 'Comentario nao encontrado.' });
+    }
+
+    const [curtidaExistente] = await pool.execute(
+      'SELECT 1 FROM curtidas_comentarios WHERE usuario_id = ? AND comentario_id = ?',
+      [usuario_id, id],
+    );
+
+    if (curtidaExistente.length > 0) {
+      await pool.execute(
+        'DELETE FROM curtidas_comentarios WHERE usuario_id = ? AND comentario_id = ?',
+        [usuario_id, id],
+      );
+    } else {
+      await pool.execute(
+        'INSERT INTO curtidas_comentarios (usuario_id, comentario_id) VALUES (?, ?)',
+        [usuario_id, id],
+      );
+
+      const { dono_comentario: donoComentario, post_id: postId, origem } = comentarios[0];
+      if (Number(donoComentario) !== Number(usuario_id)) {
+        await pool.execute(
+          `INSERT INTO notificacoes (usuario_id, tipo, usuario_origem_id, post_id, comentario_id)
+           VALUES (?, 'curtida_comentario', ?, ?, ?)`,
+          [donoComentario, usuario_id, postId, id],
+        );
+        await enviarPushExpo(donoComentario, {
+          title: 'Nova curtida',
+          body: `${origem} curtiu seu comentario`,
+          sound: 'default',
+          channelId: 'artblock-notifications',
+          data: { postId: Number(postId), commentId: Number(id), type: 'curtida_comentario' },
+        }).catch((error) => console.error('Erro ao enviar push:', error));
+      }
+    }
+
+    const [resultado] = await pool.execute(
+      'SELECT COUNT(*) AS curtidas FROM curtidas_comentarios WHERE comentario_id = ?',
+      [id],
+    );
+
+    return response.json({
+      curtidas: Number(resultado[0].curtidas || 0),
+      curtido: curtidaExistente.length === 0,
+    });
+  } catch (error) {
+    console.error(error);
+    return response.status(500).json({ error: 'Nao foi possivel atualizar a curtida do comentario.' });
   }
 });
 
@@ -581,13 +760,16 @@ app.post('/posts/:id/comentarios', async (request, response) => {
       await enviarPushExpo(donoPost, {
         title: 'Novo comentario',
         body: `${origem} comentou na sua arte: ${comentarioTexto}`,
+        sound: 'default',
+        channelId: 'artblock-notifications',
         data: { postId: Number(id), type: 'comentario' },
       }).catch((error) => console.error('Erro ao enviar push:', error));
     }
 
     const [comentarioCriado] = await pool.execute(
       `SELECT c.id, c.post_id, c.usuario_id, c.comentario_pai_id, c.comentario, c.criado_em,
-              u.arroba, pf.nome
+              u.arroba, pf.nome,
+              0 AS curtidas, 0 AS curtido_por_mim
        FROM comentarios c
        JOIN usuarios u ON u.id = c.usuario_id
        LEFT JOIN perfis pf ON pf.usuario_id = u.id
@@ -683,6 +865,8 @@ app.post('/posts/:id/curtir', async (request, response) => {
         await enviarPushExpo(donoPost, {
           title: 'Nova curtida',
           body: `${origem} curtiu sua arte`,
+          sound: 'default',
+          channelId: 'artblock-notifications',
           data: { postId: Number(id), type: 'curtida' },
         }).catch((error) => console.error('Erro ao enviar push:', error));
       }
